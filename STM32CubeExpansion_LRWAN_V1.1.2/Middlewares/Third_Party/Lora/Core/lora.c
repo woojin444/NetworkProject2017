@@ -140,6 +140,7 @@ static  LoRaParam_t* LoRaParamInit;
  * Timer to handle the application data transmission duty cycle
  */
 static TimerEvent_t TxNextPacketTimer;
+static TimerEvent_t NextBeaconTimer;
 
 static DeviceState_t DeviceState = DEVICE_STATE_INIT ;
 
@@ -258,6 +259,46 @@ static bool SendFrame( void )
     return true;
 }
 
+static bool ReceiveFrame( void )
+{
+    McpsReq_t mcpsReq;
+    LoRaMacTxInfo_t txInfo;
+    
+    if( LoRaMacQueryTxPossible( AppData.BuffSize, &txInfo ) != LORAMAC_STATUS_OK )
+    {
+        // Send empty frame in order to flush MAC commands
+        mcpsReq.Type = MCPS_UNCONFIRMED;
+        mcpsReq.Req.Unconfirmed.fBuffer = NULL;
+        mcpsReq.Req.Unconfirmed.fBufferSize = 0;
+        mcpsReq.Req.Unconfirmed.Datarate = LoRaParamInit->TxDatarate;
+    }
+    else
+    {
+        if( IsTxConfirmed == DISABLE )
+        {
+            mcpsReq.Type = MCPS_UNCONFIRMED;
+            mcpsReq.Req.Unconfirmed.fPort = AppData.Port;
+            mcpsReq.Req.Unconfirmed.fBuffer = AppData.Buff;
+            mcpsReq.Req.Unconfirmed.fBufferSize = AppData.BuffSize;
+            mcpsReq.Req.Unconfirmed.Datarate = LoRaParamInit->TxDatarate;
+        }
+        else
+        {
+            mcpsReq.Type = MCPS_CONFIRMED;
+            mcpsReq.Req.Confirmed.fPort = AppData.Port;
+            mcpsReq.Req.Confirmed.fBuffer = AppData.Buff;
+            mcpsReq.Req.Confirmed.fBufferSize = AppData.BuffSize;
+            mcpsReq.Req.Confirmed.NbTrials = 8;
+            mcpsReq.Req.Confirmed.Datarate = LoRaParamInit->TxDatarate;
+        }
+    }
+		if( ScheduleBeacon( ) == LORAMAC_STATUS_OK )
+    {
+        return false;
+    }
+    return true;
+}
+
 void OnSendEvent( void )
 {
     MibRequestConfirm_t mibReq;
@@ -265,6 +306,13 @@ void OnSendEvent( void )
 
     mibReq.Type = MIB_NETWORK_JOINED;
     status = LoRaMacMibGetRequestConfirm( &mibReq );
+	
+		if (DeviceState == DEVICE_STATE_BEACON)
+		{
+			TimerSetValue( &TxNextPacketTimer,  1000); /* 1s */
+			TimerStart( &TxNextPacketTimer );
+			return;
+		}
 
     if( status == LORAMAC_STATUS_OK )
     {
@@ -279,6 +327,21 @@ void OnSendEvent( void )
         }
     }
 }
+
+void OnBeaconEvent ( void )
+{
+	MibRequestConfirm_t mibReq;
+  LoRaMacStatus_t status;
+
+  mibReq.Type = MIB_NETWORK_JOINED;
+  status = LoRaMacMibGetRequestConfirm( &mibReq );
+	
+	if( status == LORAMAC_STATUS_OK )
+	{
+		DeviceState = DEVICE_STATE_BEACON;
+		ReceiveFrame();
+	}
+}
 /*!
  * \brief Function executed on TxNextPacket Timeout event
  */
@@ -286,6 +349,15 @@ static void OnTxNextPacketTimerEvent( void )
 {
     TimerStop( &TxNextPacketTimer );
     OnSendEvent();
+}
+
+static void OnNextBeaconTimerEvent( void )
+{
+    TimerStop( &NextBeaconTimer );
+		//TODO 주기 설정
+		//TimerSetValue( &TxNextPacketTimer, ); /* 1s */
+		TimerStart( &NextBeaconTimer );
+    OnBeaconEvent();
 }
 
 /*!
@@ -511,6 +583,16 @@ static void McpsIndication( McpsIndication_t *mcpsIndication )
             memcpy1( AppData.Buff, mcpsIndication->Buffer, AppData.BuffSize );
             
             LoRaMainCallbacks->LoraRxData( &AppData );
+				
+						if(AppData.Port == 33)
+						{
+							//TODO if ip not included, change state
+						}
+						
+						else if(AppData.Port == 34)
+						{
+							DeviceState = DEVICE_STATE_SLEEP;
+						}
             break;
         }
     }
@@ -751,6 +833,7 @@ void lora_fsm( void)
       break;
     }
     case DEVICE_STATE_SLEEP:
+		case DEVICE_STATE_BEACON:
     {
         // Wake up through events
       break;

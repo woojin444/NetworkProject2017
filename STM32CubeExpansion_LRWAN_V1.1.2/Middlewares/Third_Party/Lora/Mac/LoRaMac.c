@@ -337,6 +337,7 @@ static TimerEvent_t TxDelayedTimer;
  */
 static TimerEvent_t RxWindowTimer1;
 static TimerEvent_t RxWindowTimer2;
+static TimerEvent_t BeaconWaitTimer;
 
 /*!
  * LoRaMac reception windows delay
@@ -351,6 +352,7 @@ static uint32_t RxWindow2Delay;
  */
 static RxConfigParams_t RxWindow1Config;
 static RxConfigParams_t RxWindow2Config;
+static RxConfigParams_t RxWindowBeaconConfig;
 
 /*!
  * Acknowledge timeout timer. Used for packet retransmissions.
@@ -1093,11 +1095,26 @@ static void OnRadioRxDone( uint8_t *payload, uint16_t size, int16_t rssi, int8_t
                 }
             }
             break;
+				case FRAME_TYPE_RFU:
+            {
+                memcpy1( LoRaMacRxPayload, &payload[pktHeaderLen], size );
+
+                McpsIndication.McpsIndication = MCPS_PROPRIETARY;
+								McpsIndication.Port = 33;
+                McpsIndication.Status = LORAMAC_EVENT_INFO_STATUS_OK;
+                McpsIndication.Buffer = LoRaMacRxPayload;
+                McpsIndication.BufferSize = size - pktHeaderLen;
+
+                LoRaMacFlags.Bits.McpsInd = 1;
+                break;
+            }
+						
         case FRAME_TYPE_PROPRIETARY:
             {
                 memcpy1( LoRaMacRxPayload, &payload[pktHeaderLen], size );
 
                 McpsIndication.McpsIndication = MCPS_PROPRIETARY;
+								McpsIndication.Port = 34;
                 McpsIndication.Status = LORAMAC_EVENT_INFO_STATUS_OK;
                 McpsIndication.Buffer = LoRaMacRxPayload;
                 McpsIndication.BufferSize = size - pktHeaderLen;
@@ -1439,6 +1456,26 @@ static void OnTxDelayedTimerEvent( void )
     }
 
     ScheduleTx( );
+}
+
+static void OnRxWindowBeaconTimerEvent( void )
+{
+		RxSlot = 0;
+	
+    RxWindowBeaconConfig.Channel = Channel;
+    RxWindowBeaconConfig.DrOffset = LoRaMacParams.Rx1DrOffset;
+    RxWindowBeaconConfig.DownlinkDwellTime = LoRaMacParams.DownlinkDwellTime;
+    RxWindowBeaconConfig.RepeaterSupport = RepeaterSupport;
+    RxWindowBeaconConfig.RxContinuous = false;
+    RxWindowBeaconConfig.Window = RxSlot;
+
+    if( LoRaMacDeviceClass == CLASS_C )
+    {
+        Radio.Standby( );
+    }
+
+    RegionRxConfig( LoRaMacRegion, &RxWindowBeaconConfig, ( int8_t* )&McpsIndication.RxDatarate );
+    RxWindowSetup( RxWindowBeaconConfig.RxContinuous, LoRaMacParams.MaxRxWindow );
 }
 
 static void OnRxWindow1TimerEvent( void )
@@ -1984,6 +2021,13 @@ static LoRaMacStatus_t ScheduleTx( void )
     }
 }
 
+//WORKING
+static LoRaMacStatus_t ScheduleBeacon( void )
+{
+    TimerSetValue( &BeaconWaitTimer, 5000 );
+    TimerStart( &BeaconWaitTimer );
+}
+
 static void CalculateBackOff( uint8_t channel )
 {
     CalcBackOffParams_t calcBackOff;
@@ -2420,6 +2464,7 @@ LoRaMacStatus_t LoRaMacInitialization( LoRaMacPrimitives_t *primitives, LoRaMacC
     TimerInit( &RxWindowTimer1, OnRxWindow1TimerEvent );
     TimerInit( &RxWindowTimer2, OnRxWindow2TimerEvent );
     TimerInit( &AckTimeoutTimer, OnAckTimeoutTimerEvent );
+		TimerInit( &BeaconWaitTimer, OnRxWindowBeaconTimerEvent );
 
     // Store the current initialization time
     LoRaMacInitializationTime = TimerGetCurrentTime( );
@@ -3214,6 +3259,117 @@ LoRaMacStatus_t LoRaMacMlmeRequest( MlmeReq_t *mlmeRequest )
 }
 
 LoRaMacStatus_t LoRaMacMcpsRequest( McpsReq_t *mcpsRequest )
+{
+    GetPhyParams_t getPhy;
+    PhyParam_t phyParam;
+    LoRaMacStatus_t status = LORAMAC_STATUS_SERVICE_UNKNOWN;
+    LoRaMacHeader_t macHdr;
+    VerifyParams_t verify;
+    uint8_t fPort = 0;
+    void *fBuffer;
+    uint16_t fBufferSize;
+    int8_t datarate;
+    bool readyToSend = false;
+
+    if( mcpsRequest == NULL )
+    {
+        return LORAMAC_STATUS_PARAMETER_INVALID;
+    }
+    if( ( ( LoRaMacState & LORAMAC_TX_RUNNING ) == LORAMAC_TX_RUNNING ) ||
+        ( ( LoRaMacState & LORAMAC_TX_DELAYED ) == LORAMAC_TX_DELAYED ) )
+    {
+        return LORAMAC_STATUS_BUSY;
+    }
+
+    macHdr.Value = 0;
+    memset1 ( ( uint8_t* ) &McpsConfirm, 0, sizeof( McpsConfirm ) );
+    McpsConfirm.Status = LORAMAC_EVENT_INFO_STATUS_ERROR;
+
+    // AckTimeoutRetriesCounter must be reset every time a new request (unconfirmed or confirmed) is performed.
+    AckTimeoutRetriesCounter = 1;
+
+    switch( mcpsRequest->Type )
+    {
+        case MCPS_UNCONFIRMED:
+        {
+            readyToSend = true;
+            AckTimeoutRetries = 1;
+
+            macHdr.Bits.MType = FRAME_TYPE_DATA_UNCONFIRMED_UP;
+            fPort = mcpsRequest->Req.Unconfirmed.fPort;
+            fBuffer = mcpsRequest->Req.Unconfirmed.fBuffer;
+            fBufferSize = mcpsRequest->Req.Unconfirmed.fBufferSize;
+            datarate = mcpsRequest->Req.Unconfirmed.Datarate;
+            break;
+        }
+        case MCPS_CONFIRMED:
+        {
+            readyToSend = true;
+            AckTimeoutRetries = mcpsRequest->Req.Confirmed.NbTrials;
+
+            macHdr.Bits.MType = FRAME_TYPE_DATA_CONFIRMED_UP;
+            fPort = mcpsRequest->Req.Confirmed.fPort;
+            fBuffer = mcpsRequest->Req.Confirmed.fBuffer;
+            fBufferSize = mcpsRequest->Req.Confirmed.fBufferSize;
+            datarate = mcpsRequest->Req.Confirmed.Datarate;
+            break;
+        }
+        case MCPS_PROPRIETARY:
+        {
+            readyToSend = true;
+            AckTimeoutRetries = 1;
+
+            macHdr.Bits.MType = FRAME_TYPE_PROPRIETARY;
+            fBuffer = mcpsRequest->Req.Proprietary.fBuffer;
+            fBufferSize = mcpsRequest->Req.Proprietary.fBufferSize;
+            datarate = mcpsRequest->Req.Proprietary.Datarate;
+            break;
+        }
+        default:
+            break;
+    }
+
+    // Get the minimum possible datarate
+    getPhy.Attribute = PHY_MIN_TX_DR;
+    getPhy.UplinkDwellTime = LoRaMacParams.UplinkDwellTime;
+    phyParam = RegionGetPhyParam( LoRaMacRegion, &getPhy );
+    // Apply the minimum possible datarate.
+    // Some regions have limitations for the minimum datarate.
+    datarate = MAX( datarate, phyParam.Value );
+
+    if( readyToSend == true )
+    {
+        if( AdrCtrlOn == false )
+        {
+            verify.DatarateParams.Datarate = datarate;
+            verify.DatarateParams.UplinkDwellTime = LoRaMacParams.UplinkDwellTime;
+
+            if( RegionVerify( LoRaMacRegion, &verify, PHY_TX_DR ) == true )
+            {
+                LoRaMacParams.ChannelsDatarate = verify.DatarateParams.Datarate;
+            }
+            else
+            {
+                return LORAMAC_STATUS_PARAMETER_INVALID;
+            }
+        }
+
+        status = Send( &macHdr, fPort, fBuffer, fBufferSize );
+        if( status == LORAMAC_STATUS_OK )
+        {
+            McpsConfirm.McpsRequest = mcpsRequest->Type;
+            LoRaMacFlags.Bits.McpsReq = 1;
+        }
+        else
+        {
+            NodeAckRequested = false;
+        }
+    }
+
+    return status;
+}
+
+LoRaMacStatus_t LoRaMacMcpsRespond( McpsReq_t *mcpsRequest )
 {
     GetPhyParams_t getPhy;
     PhyParam_t phyParam;
