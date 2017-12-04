@@ -1093,6 +1093,18 @@ static void OnRadioRxDone( uint8_t *payload, uint16_t size, int16_t rssi, int8_t
                 }
             }
             break;
+        case FRAME_TYPE_RFU:
+            {
+                memcpy1( LoRaMacRxPayload, &payload[pktHeaderLen], size );
+
+                McpsIndication.McpsIndication = MCPS_PROPRIETARY;
+                McpsIndication.Status = LORAMAC_EVENT_INFO_STATUS_OK;
+                McpsIndication.Buffer = LoRaMacRxPayload;
+                McpsIndication.BufferSize = size - pktHeaderLen;
+
+                LoRaMacFlags.Bits.McpsInd = 1;
+                break;
+            }
         case FRAME_TYPE_PROPRIETARY:
             {
                 memcpy1( LoRaMacRxPayload, &payload[pktHeaderLen], size );
