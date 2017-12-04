@@ -99,6 +99,7 @@ typedef enum eDevicState
     DEVICE_STATE_SEND,
     DEVICE_STATE_CYCLE,
     DEVICE_STATE_SLEEP,
+		DEVICE_STATE_BEACON
 } DeviceState_t;
 
 /*!
