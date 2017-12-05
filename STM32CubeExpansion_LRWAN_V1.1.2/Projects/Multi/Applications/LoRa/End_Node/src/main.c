@@ -344,6 +344,31 @@ static void LoraRxData( lora_AppData_t *AppData )
       }
     break;
   }
+	case 33:
+	{
+		PRINTF("received BEACON at %d[ms]\n\r", TimerGetCurrentTime());
+		PRINTF("--------------------- beacon data ------------------ \n\r");
+		PRINTF("-- beacon interval[s] : %d\n\r", AppData->Buff[0]);
+		PRINTF("-- rx num             : %d\n\r\n\r", AppData->Buff[1]);
+		
+		for( uint8_t i = 0; i < AppData->Buff[1]; i++ )
+		{
+			PRINTF("---- EUI              : ");
+			for( uint8_t j = 0; j < 8; j++ ) {PRINTF("-%02X", AppData->Buff[2+8*i+j]); }; PRINTF("\n\r");
+			PRINTF("---- interval[s]      : %d\n\r\n\r", AppData->Buff[10+8*i]);
+		}
+	}
+	case 34:
+	{
+		PRINTF("received downlink transmission at %d[ms]\n\r", TimerGetCurrentTime());
+		PRINTF("--------------------- downlink data ------------------ \n\r");
+		PRINTF("-- hex\n\r-- ");
+		for( uint8_t j = 0; j < AppData->BuffSize; j++ ) {PRINTF("%02X", AppData->Buff[j]); }; PRINTF("\n\r");
+		PRINTF("-- octal\n\r-- ");
+		for( uint8_t j = 0; j < AppData->BuffSize; j++ ) {PRINTF("%d", AppData->Buff[j]); }; PRINTF("\n\r");
+		PRINTF("-- char\n\r-- ");
+		for( uint8_t j = 0; j < AppData->BuffSize; j++ ) {PRINTF("%c", AppData->Buff[j]); }; PRINTF("\n\r");
+	}
   default:
     break;
   }

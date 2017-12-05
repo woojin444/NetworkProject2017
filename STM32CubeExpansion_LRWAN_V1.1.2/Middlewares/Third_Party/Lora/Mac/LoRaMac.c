@@ -338,6 +338,7 @@ static TimerEvent_t TxDelayedTimer;
 static TimerEvent_t RxWindowTimer1;
 static TimerEvent_t RxWindowTimer2;
 static TimerEvent_t BeaconWaitTimer;
+static TimerEvent_t BeaconRxTimer;
 
 /*!
  * LoRaMac reception windows delay
@@ -353,6 +354,7 @@ static uint32_t RxWindow2Delay;
 static RxConfigParams_t RxWindow1Config;
 static RxConfigParams_t RxWindow2Config;
 static RxConfigParams_t RxWindowBeaconConfig;
+static RxConfigParams_t RxWindowDownlinkConfig;
 
 /*!
  * Acknowledge timeout timer. Used for packet retransmissions.
@@ -1458,8 +1460,9 @@ static void OnTxDelayedTimerEvent( void )
     ScheduleTx( );
 }
 
-static void OnRxWindowBeaconTimerEvent( void )
+static void OnBeaconWaitTimerEvent( void )
 {
+		TimerStop( &BeaconWaitTimer );
 		RxSlot = 0;
 	
     RxWindowBeaconConfig.Channel = Channel;
@@ -1476,6 +1479,48 @@ static void OnRxWindowBeaconTimerEvent( void )
 
     RegionRxConfig( LoRaMacRegion, &RxWindowBeaconConfig, ( int8_t* )&McpsIndication.RxDatarate );
     RxWindowSetup( RxWindowBeaconConfig.RxContinuous, LoRaMacParams.MaxRxWindow );
+}
+
+void WaitFirstBeacon( void )
+{
+		TimerStop( &BeaconWaitTimer );
+		RxSlot = 0;
+	
+    RxWindowBeaconConfig.Channel = Channel;
+    RxWindowBeaconConfig.DrOffset = LoRaMacParams.Rx1DrOffset;
+    RxWindowBeaconConfig.DownlinkDwellTime = LoRaMacParams.DownlinkDwellTime;
+    RxWindowBeaconConfig.RepeaterSupport = RepeaterSupport;
+    RxWindowBeaconConfig.RxContinuous = false;
+    RxWindowBeaconConfig.Window = RxSlot;
+
+    if( LoRaMacDeviceClass == CLASS_C )
+    {
+        Radio.Standby( );
+    }
+
+    RegionRxConfig( LoRaMacRegion, &RxWindowBeaconConfig, ( int8_t* )&McpsIndication.RxDatarate );
+    RxWindowSetup( true, 0 );
+}
+
+static void OnBeaconRxTimerEvent( void )
+{
+		TimerStop( &BeaconRxTimer );
+		RxSlot = 0;
+	
+    RxWindowDownlinkConfig.Channel = Channel;
+    RxWindowDownlinkConfig.DrOffset = LoRaMacParams.Rx1DrOffset;
+    RxWindowDownlinkConfig.DownlinkDwellTime = LoRaMacParams.DownlinkDwellTime;
+    RxWindowDownlinkConfig.RepeaterSupport = RepeaterSupport;
+    RxWindowDownlinkConfig.RxContinuous = false;
+    RxWindowDownlinkConfig.Window = RxSlot;
+
+    if( LoRaMacDeviceClass == CLASS_C )
+    {
+        Radio.Standby( );
+    }
+
+    RegionRxConfig( LoRaMacRegion, &RxWindowDownlinkConfig, ( int8_t* )&McpsIndication.RxDatarate );
+    RxWindowSetup( RxWindowDownlinkConfig.RxContinuous, LoRaMacParams.MaxRxWindow );
 }
 
 static void OnRxWindow1TimerEvent( void )
@@ -2022,10 +2067,16 @@ static LoRaMacStatus_t ScheduleTx( void )
 }
 
 //WORKING
-static LoRaMacStatus_t ScheduleBeacon( void )
+void ScheduleBeacon( void )
 {
-    TimerSetValue( &BeaconWaitTimer, 5000 );
-    TimerStart( &BeaconWaitTimer );
+	TimerSetValue( &BeaconWaitTimer, 5000 );
+  TimerStart( &BeaconWaitTimer );
+}
+
+void ScheduleBeaconRx( uint32_t time )
+{ 
+	TimerSetValue( &BeaconRxTimer, time );
+  TimerStart( &BeaconRxTimer );
 }
 
 static void CalculateBackOff( uint8_t channel )
@@ -2464,7 +2515,8 @@ LoRaMacStatus_t LoRaMacInitialization( LoRaMacPrimitives_t *primitives, LoRaMacC
     TimerInit( &RxWindowTimer1, OnRxWindow1TimerEvent );
     TimerInit( &RxWindowTimer2, OnRxWindow2TimerEvent );
     TimerInit( &AckTimeoutTimer, OnAckTimeoutTimerEvent );
-		TimerInit( &BeaconWaitTimer, OnRxWindowBeaconTimerEvent );
+		TimerInit( &BeaconWaitTimer, OnBeaconWaitTimerEvent );
+		TimerInit( &BeaconRxTimer, OnBeaconRxTimerEvent );
 
     // Store the current initialization time
     LoRaMacInitializationTime = TimerGetCurrentTime( );

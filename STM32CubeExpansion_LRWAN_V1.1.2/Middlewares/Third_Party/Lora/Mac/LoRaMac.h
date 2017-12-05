@@ -1959,3 +1959,9 @@ LoRaMacStatus_t LoRaMacMcpsRequest( McpsReq_t *mcpsRequest );
 /*! \} defgroup LORAMAC */
 
 #endif // __LORAMAC_H__
+
+void ScheduleBeacon( void );
+
+void ScheduleBeaconRx( uint32_t time );
+	
+void WaitFirstBeacon( void );
