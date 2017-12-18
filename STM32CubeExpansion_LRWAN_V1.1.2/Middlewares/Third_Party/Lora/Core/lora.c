@@ -580,8 +580,8 @@ static void McpsIndication( McpsIndication_t *mcpsIndication )
 							
 							for( uint8_t i = 0; i < AppData.Buff[1]; i++ )
 							{
-								if( CompareEUI(AppData.Buff+(2+8*i)) ){
-									ScheduleBeaconRx(AppData.Buff[10+8*i]*1000 
+								if( CompareEUI(AppData.Buff+(2+9*i)) ){
+									ScheduleBeaconRx(AppData.Buff[10+9*i]*1000 
 												- TimerGetElapsedTime(BeaconElapsedTime) + 5000);
 									break;
 								}
