@@ -223,7 +223,7 @@ static void LoraTxData( lora_AppData_t *AppData, FunctionalState* IsTxConfirmed)
 
 #ifdef CAYENNE_LPP
   uint8_t cchannel=0;
-  temperature = ( int16_t )( sensor_data.temperature * 10 );     /* in °C * 10 */
+  temperature = ( int16_t )( sensor_data.temperature * 10 );     /* in Â°C * 10 */
   pressure    = ( uint16_t )( sensor_data.pressure * 100 / 10 );  /* in hPa / 10 */
   humidity    = ( uint16_t )( sensor_data.humidity * 2 );        /* in %*2     */
   uint32_t i = 0;
@@ -256,7 +256,7 @@ static void LoraTxData( lora_AppData_t *AppData, FunctionalState* IsTxConfirmed)
 #endif  /* REGION_XX915 */
 #else  /* not CAYENNE_LPP */
 
-  temperature = ( int16_t )( sensor_data.temperature * 100 );     /* in °C * 100 */
+  temperature = ( int16_t )( sensor_data.temperature * 100 );     /* in Â°C * 100 */
   pressure    = ( uint16_t )( sensor_data.pressure * 100 / 10 );  /* in hPa / 10 */
   humidity    = ( uint16_t )( sensor_data.humidity * 10 );        /* in %*10     */
   latitude = sensor_data.latitude;
@@ -354,8 +354,8 @@ static void LoraRxData( lora_AppData_t *AppData )
 		for( uint8_t i = 0; i < AppData->Buff[1]; i++ )
 		{
 			PRINTF("---- EUI              : ");
-			for( uint8_t j = 0; j < 8; j++ ) {PRINTF("-%02X", AppData->Buff[2+8*i+j]); }; PRINTF("\n\r");
-			PRINTF("---- interval[s]      : %d\n\r\n\r", AppData->Buff[10+8*i]);
+			for( uint8_t j = 0; j < 8; j++ ) {PRINTF("-%02X", AppData->Buff[2+9*i+j]); }; PRINTF("\n\r");
+			PRINTF("---- interval[s]      : %d\n\r\n\r", AppData->Buff[10+9*i]);
 		}
 	}
 	case 34:
