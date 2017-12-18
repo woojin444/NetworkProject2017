@@ -5,6 +5,7 @@
 %
 -module(lorawan_app).
 -behaviour(application).
+-behaviour(gen_server).
 
 -export([start/0]).
 -export([start/2, stop/1]).
@@ -80,7 +81,15 @@ start(_Type, _Args) ->
                 #{env => #{dispatch => Dispatch},
                 stream_handlers => [lorawan_admin_logger, cowboy_compress_h, cowboy_stream_h]})
     end,
-    lorawan_sup:start_link().
+    lorawan_sup:start_link(),
+    Timer = erlang:send_after(1, self(), check).
+    {ok, Timer}.
+
+handle_beacon(check, OldTimer) ->
+    erlang:cancel_timer(OldTimer),
+    % lorawan_handler:downlink(Link, os:timestamp(), #txdata{port = 0}),
+    Timer = erlang:send_after(50000, self(), check),
+    {noreply, Timer}.
 
 stop(_State) ->
     ok = cowboy:stop_listener(http),

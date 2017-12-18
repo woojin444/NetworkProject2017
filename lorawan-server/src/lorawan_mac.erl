@@ -542,6 +542,13 @@ send_unicast(#link{devaddr=DevAddr}, TxQ, ACK, FOpts, #txdata{confirmed=true}=Tx
     PHYPayload = encode_unicast(2#101, DevAddr, ACK, FOpts, TxData),
     ok = mnesia:dirty_write(pending, #pending{devaddr=DevAddr, confirmed=true, phypayload=PHYPayload}),
     {send, DevAddr, TxQ, PHYPayload};
+
+% send beacon 
+send_unicast(#link{devaddr=DevAddr}, TxQ, ACK, FOpts, #txdata{confirmed=false, pending=undefined}=TxData) ->
+    PHYPayload = encode_unicast(2#110, DevAddr, ACK, FOpts, TxData),
+    ok = mnesia:dirty_write(pending, #pending{devaddr=DevAddr, confirmed=true, phypayload=PHYPayload}),
+    {send, DevAddr, TxQ, PHYPayload};
+
 % non #txdata received, invoke the application to perform payload encoding
 send_unicast(Link, TxQ, ACK, FOpts, TxData) ->
     {FOpts2, TxData2} = lorawan_handler:encode_tx(Link, TxQ, FOpts, TxData),
