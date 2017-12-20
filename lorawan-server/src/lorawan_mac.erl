@@ -20,6 +20,7 @@
 -include("lorawan.hrl").
 
 -record(frame, {devaddr, adr, adr_ack_req, ack, fcnt, fopts, fport, data}).
+-record(beacon, {devaddr, fcnt, fopts, fport, data}).
 
 process_frame(MAC, RxQ, PHYPayload) ->
     Size = byte_size(PHYPayload)-4,
@@ -548,6 +549,17 @@ send_unicast(#link{devaddr=DevAddr}, TxQ, ACK, FOpts, #txdata{confirmed=false, p
     PHYPayload = encode_unicast(2#110, DevAddr, ACK, FOpts, TxData),
     ok = mnesia:dirty_write(pending, #pending{devaddr=DevAddr, confirmed=true, phypayload=PHYPayload}),
     {send, DevAddr, TxQ, PHYPayload};
+
+% SEND BEACON FUNCTION THAT USES 111 PROPRIETARY HEADER
+send_beacon(#link{devaddr=DevAddr}, TxQ, beacon) ->
+    PHYPayload = encode_unicast(2#111, DevAddr, 1, #beacon.fopts, #beacon.data),
+    ok = mnesia:dirty_write(pending, #pending{devaddr=DevAddr, confirmed=true, phypayload=PHYPayload}),
+    {send, DevAddr, TxQ, PHYPayload};
+send_beacon(#link{devaddr=DevAddr}, TxQ, beacon) ->
+    PHYPayload = encode_unicast(2#111, DevAddr, 1, #beacon.fopts, #beacon.data),
+    ok = mnesia:dirty_write(pending, #pending{devaddr=DevAddr, confirmed=false, phypayload=PHYPayload}),
+    {send, DevAddr, TxQ, PHYPayload};
+% END OF SEND BEACON FUNCTION
 
 % non #txdata received, invoke the application to perform payload encoding
 send_unicast(Link, TxQ, ACK, FOpts, TxData) ->
